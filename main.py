@@ -8,6 +8,7 @@ from aifunctions import analyze_image_and_prompt, generate_dalle_image
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+import re
 cloudinary.config( 
     cloud_name = "dyftlrfdk", 
     api_key = "647463598268291", 
@@ -22,7 +23,21 @@ UPLOAD_FOLDER = './uploads/'
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-
+def clean_and_convert_to_json(response_string):
+    # Use regex to remove the ```json and ``` block and any escape sequences
+    cleaned_response_string = re.sub(r'```json|```', '', response_string).strip()
+    
+    # Debug: Print the cleaned string
+    print("Cleaned Response String:", cleaned_response_string)
+    
+    try:
+        # Parse the cleaned string as a JSON object
+        json_object = json.loads(cleaned_response_string)
+        return json_object
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON: {e}")
+        return response_string
+    
 def create_version_file():
     # Get the current time
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -61,7 +76,7 @@ def get_result_image1(filename):
  
 
 
-@app.route('/generate-image', methods=['POST'])
+@app.route('/analysis-prescription', methods=['POST'])
 def generate_image():
     if 'image' not in request.files:
         return jsonify({'error': 'No image file provided'}), 400
@@ -69,55 +84,83 @@ def generate_image():
     image = request.files['image']
     
     if image.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+        return jsonify({'error': 'No file selected.'}), 400
     
-    # Upload the image directly to Cloudinary
-    upload_result = cloudinary.uploader.upload(image, public_id=f"{os.path.splitext(image.filename)[0]}")
+    try:
+        # Upload the image directly to Cloudinary
+        upload_result = cloudinary.uploader.upload(image, public_id=f"{os.path.splitext(image.filename)[0]}")
     
-    # Get the secure URL of the uploaded image
-    uploaded_image_path = upload_result["secure_url"]
-    
-    print(uploaded_image_path)
+        # Get the secure URL of the uploaded image
+        uploaded_image_path = upload_result["secure_url"]
+        print(f"Uploaded image path: {uploaded_image_path}")
+    except Exception as e:
+        print(f"Error uploading image: {str(e)}")
+        return jsonify({'error': 'Failed to upload image.', 'details': str(e)}), 500
 
-    analysis_promt = """
-    Describe the following prescription image medications . You have to describe the tests if it mentioned in prescription.  
+    analysis_prompt = """
+    Describe the following prescription image medications. You have to describe the tests if mentioned in the prescription.
     
-     Here is the JSON format of your response: 
-    {
-"medicines" : [{
- "medicine_name" : ""  ,
- "one_line_short_description": "" ,
- "description":  "",
- "medicine_time": [] , // breakfast, lunch, dinner
- "is_take_after_meal":  // true or false
+    Here is the JSON format of your response: 
+{
+"patientName": "",
+"age": "",
+"data" : [
+{
+    "medicineName": "",
+    "takingTime": "1+1+0", # taking time format
+    "isNeedEmptyStomach": "no-yes-x", # if should take the medicine on an empty stomach for breakfast-lunch-dinner, x for doesn't need to take.
+    "medicineUsage": "",
+    "sideEffect": ""
 },
-...
-...
+{
+    "medicineName": "",
+    "takingTime": "1+1+1",
+    "isNeedEmptyStomach": "no-yes-yes",
+    "medicineUsage": "",
+    "sideEffect": ""
+}
+],
 
-]
- "test" : [{
-  "test_name": "",
-  "one_line_short_description": "",
-  "description": ""
- },
- ..
- ..
- ..
- ]
+"healthData" : [
+{
+"type": "", # Diabetes, Pressure, BP, etc.
+"value": ""
+},
+{
+"type": "",
+"value": ""
+}
+],
 
+"test": ["test 1", "test 2", "test 3"]
 }
     """
     
-    
-    if not uploaded_image_path or not analysis_promt:
+    if not uploaded_image_path or not analysis_prompt:
         return jsonify({'error': 'Image and prompt are required.'}), 400
-  
-    gpt_analysis = analyze_image_and_prompt(uploaded_image_path, analysis_promt)
-    #image_prompt = f"You have to change the background of the car. The car should be infront of hyundai car shop. The image description is: {gpt_analysis}."
-    print(gpt_analysis)
-    # generated_image = generate_dalle_image(image_prompt, uploaded_image_path)
-    # print(generated_image)
-    # return jsonify({'generated_image': generated_image})
+
+    # Call the function to analyze the image and get the result
+    gpt_analysis = analyze_image_and_prompt(uploaded_image_path, analysis_prompt)
+    
+    # DEBUG: Log the exact GPT response for debugging purposes
+    print("GPT Analysis Raw Response:", gpt_analysis)
+    
+    # Attempt to clean up the response (e.g., remove extraneous characters or text)
+    try:
+        # Sometimes GPT might return some leading or trailing text that is not part of the JSON
+        json_output = clean_and_convert_to_json(gpt_analysis)
+        
+        # Ensure only valid JSON is returned
+        # gpt_analysis_json = json.loads(gpt_analysis_cleaned)
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {str(e)}")
+        #json_output = clean_and_convert_to_json(gpt_analysis)
+        return jsonify({'error': 'Invalid JSON response from GPT analysis.', 'raw_response': gpt_analysis}), 500
+    
+    print("GPT Analysis Parsed JSON:", json_output)
+    
+    # Return the parsed JSON as a response
+    return jsonify(json_output)
     
 
 if __name__ == '__main__':
