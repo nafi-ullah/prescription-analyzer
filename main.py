@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 import requests
 import json
 import os
+from flask_cors import CORS 
 from PIL import Image
 from datetime import datetime
 from aifunctions import analyze_image_and_prompt, generate_dalle_image, get_prescription_response
@@ -18,6 +19,7 @@ cloudinary.config(
 
 app = Flask(__name__)
 
+CORS(app, resources={r"/*": {"origins": "*"}}, methods=["GET", "POST"])
 UPLOAD_FOLDER = './uploads/'
 
 
