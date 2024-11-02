@@ -4,7 +4,7 @@ import json
 import os
 from PIL import Image
 from datetime import datetime
-from aifunctions import analyze_image_and_prompt, generate_dalle_image
+from aifunctions import analyze_image_and_prompt, generate_dalle_image, get_prescription_response
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
@@ -99,41 +99,7 @@ def generate_image():
 
     analysis_prompt = """
     Describe the following prescription image medications. You have to describe the tests if mentioned in the prescription.
-    
-    Here is the JSON format of your response: 
-{
-"patientName": "",
-"age": "",
-"data" : [
-{
-    "medicineName": "",
-    "takingTime": "1+1+0", # taking time format
-    "isNeedEmptyStomach": "no-yes-x", # if should take the medicine on an empty stomach for breakfast-lunch-dinner, x for doesn't need to take.
-    "medicineUsage": "",
-    "sideEffect": ""
-},
-{
-    "medicineName": "",
-    "takingTime": "1+1+1",
-    "isNeedEmptyStomach": "no-yes-yes",
-    "medicineUsage": "",
-    "sideEffect": ""
-}
-],
-
-"healthData" : [
-{
-"type": "", # Diabetes, Pressure, BP, etc.
-"value": ""
-},
-{
-"type": "",
-"value": ""
-}
-],
-
-"test": ["test 1", "test 2", "test 3"]
-}
+    include medicine names, taking times, isNeedEmptyStomach, medicine usage, side effects, health related datas, patient name, age, test data etc.
     """
     
     if not uploaded_image_path or not analysis_prompt:
@@ -146,16 +112,13 @@ def generate_image():
     print("GPT Analysis Raw Response:", gpt_analysis)
     
     # Attempt to clean up the response (e.g., remove extraneous characters or text)
-    try:
+  
         # Sometimes GPT might return some leading or trailing text that is not part of the JSON
-        json_output = clean_and_convert_to_json(gpt_analysis)
+    json_output = get_prescription_response(gpt_analysis)
         
         # Ensure only valid JSON is returned
         # gpt_analysis_json = json.loads(gpt_analysis_cleaned)
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error: {str(e)}")
-        #json_output = clean_and_convert_to_json(gpt_analysis)
-        return jsonify({'error': 'Invalid JSON response from GPT analysis.', 'raw_response': gpt_analysis}), 500
+    
     
     print("GPT Analysis Parsed JSON:", json_output)
     
